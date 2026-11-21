@@ -1,0 +1,360 @@
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BIBZ CHECKER IP V2</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;padding:15px;background:#080e1b;color:#eaf5ff;font-family:Arial,sans-serif}
+main{max-width:850px;margin:auto}
+header{text-align:center;padding:25px 5px}
+.logo{width:68px;height:68px;margin:auto auto 12px;display:grid;place-items:center;border-radius:20px;background:linear-gradient(135deg,#00eaff,#755cff);color:#06101c;font-size:34px;font-weight:900;box-shadow:0 0 27px #00eaff66}
+h1{font-size:27px;letter-spacing:2px;margin:5px}
+h1 span{color:#00eaff}
+.sub{color:#819bb9;font-size:11px;letter-spacing:2px}
+.panel{background:#101b2c;border:1px solid #29415d;border-radius:16px;padding:18px;margin:14px 0}
+.label{font-size:13px;color:#91abc9;margin-bottom:11px}
+input{width:100%;padding:15px;background:#081321;border:1px solid #34516e;border-radius:10px;color:white;font-size:16px}
+.buttons{display:flex;gap:9px;margin-top:12px;flex-wrap:wrap}
+button{flex:1;min-width:110px;padding:14px;border:0;border-radius:10px;background:#00d9ee;color:#06131d;font-weight:bold;font-size:14px;cursor:pointer;touch-action:manipulation}
+button.secondary{background:#263d58;color:white}
+button:disabled{opacity:.5}
+.servers{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.server{padding:13px;border:1px solid #294663;border-radius:10px;background:#091523;font-size:14px}
+.status{float:right;color:#ffbd55}
+.ok{color:#48f5a5}.bad{color:#ff7777}
+.progress{height:7px;background:#26384e;border-radius:9px;margin-top:14px;overflow:hidden}
+#bar{height:100%;width:0;background:linear-gradient(90deg,#00eaff,#8865ff);transition:.3s}
+#log{font-size:13px;color:#9cb5d1;margin-top:11px}
+.card{background:#101c2d;border:1px solid #294663;border-radius:14px;padding:17px;margin:13px 0}
+.card h3{color:#00eaff;margin:0 0 8px;font-size:18px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px}
+.item{background:#091522;padding:13px;border-radius:9px;overflow-wrap:anywhere;min-width:0}
+.item label{display:block;font-size:12px;color:#91abc9;margin-bottom:8px}
+.item b{font-size:15px;line-height:1.5;font-weight:600}
+.copy{margin-top:13px;background:#263d58;color:white;flex:none}
+.match{text-align:center;padding:19px;background:#11283e;border:1px solid #23617b;border-radius:13px;margin:14px 0}
+.percent{font-size:40px;font-weight:bold;color:#00eaff}
+.note{font-size:12px;color:#829bb8;line-height:1.7}
+.empty{text-align:center;color:#829bb8;padding:22px}
+a{color:#00d9ee}
+@media(max-width:420px){
+ h1{font-size:23px}
+ .grid{grid-template-columns:1fr 1fr;gap:8px}
+ .item{padding:11px}
+ .item b{font-size:14px}
+}
+</style>
+</head>
+<body>
+<main>
+<header>
+<div class="logo">B</div>
+<h1>BIBZ <span>CHECKER IP</span></h1>
+<div class="sub">MULTI SERVER LOOKUP • VERSION 2</div>
+</header>
+
+<section class="panel">
+<div class="label">MASUKKAN IP ADDRESS</div>
+<input id="ip" type="text" placeholder="Contoh: 8.8.8.8">
+<div class="buttons">
+<button id="myBtn" type="button">MY IP</button>
+<button id="scanBtn" type="button">SCAN ALL SERVER</button>
+</div>
+<div class="buttons">
+<button id="resetBtn" class="secondary" type="button">RESET HASIL</button>
+</div>
+</section>
+
+<section class="panel">
+<div class="label">SERVER STATUS</div>
+<div class="servers" id="servers"></div>
+<div class="progress"><div id="bar"></div></div>
+<div id="log">Siap melakukan pemeriksaan.</div>
+</section>
+
+<div id="compare"></div>
+<div id="results">
+<section class="panel empty">Hasil pemeriksaan akan muncul di sini.</section>
+</div>
+
+<section class="panel note">
+BIBZ CHECKER IP VERSION 2. Lokasi IP merupakan perkiraan, bukan alamat rumah atau posisi seseorang secara tepat.
+<br><br>
+IP Geolocation data attribution: <a href="https://db-ip.com/" target="_blank" rel="noopener">DB-IP</a>.
+</section>
+</main>
+
+<script>
+(function(){
+"use strict";
+
+const names=["IPAPI","IPWHO","IPADDRESSDETAILS","FREEIPAPI","IPINFO"];
+const $=id=>document.getElementById(id);
+let results=Array(5).fill(null);
+let busy=false;
+
+function init(){
+ $("servers").innerHTML=names.map((n,i)=>
+ '<div class="server">'+n+' <span class="status" id="s'+i+'">WAITING</span></div>'
+ ).join("");
+
+ $("scanBtn").addEventListener("click",scanAll);
+ $("myBtn").addEventListener("click",()=>{
+  $("ip").value="";
+  scanAll();
+ });
+ $("resetBtn").addEventListener("click",reset);
+}
+
+function setStatus(i,text,cls){
+ const e=$("s"+i);
+ e.textContent=text;
+ e.className="status "+(cls||"");
+}
+
+function normalize(i,d){
+ let r={server:names[i]};
+
+ if(i===0){
+  Object.assign(r,{
+   ip:d.ip,country:d.country_name,region:d.region,
+   city:d.city,zip:d.postal,isp:d.org,
+   asn:d.asn,asnorg:d.org,
+   lat:d.latitude,lon:d.longitude
+  });
+ }
+
+ if(i===1){
+  if(d.success===false)throw Error("API error");
+  Object.assign(r,{
+   ip:d.ip,country:d.country,region:d.region,
+   city:d.city,zip:d.postal,
+   isp:d.connection?.isp,
+   asn:d.connection?.asn,
+   asnorg:d.connection?.org,
+   lat:d.latitude,lon:d.longitude
+  });
+ }
+
+ if(i===2){
+  if(d.is_private)throw Error("IP private tidak memiliki data lokasi publik");
+  Object.assign(r,{
+   ip:d.ip,
+   country:d.country,
+   region:d.region,
+   city:d.city,
+   zip:d.postal,
+   isp:d.org,
+   asn:d.asn,
+   asnorg:d.org,
+   lat:d.latitude,
+   lon:d.longitude
+  });
+ }
+
+ if(i===3){
+  Object.assign(r,{
+   ip:d.ipAddress,country:d.countryName,
+   region:d.regionName,city:d.cityName,
+   zip:d.zipCode,isp:d.isp,
+   asn:d.asn,asnorg:d.asnOrganization,
+   lat:d.latitude,lon:d.longitude
+  });
+ }
+
+ if(i===4){
+  let p=(d.loc||"").split(",");
+  Object.assign(r,{
+   ip:d.ip,country:d.country,region:d.region,
+   city:d.city,zip:d.postal,isp:d.org,
+   asn:d.org,asnorg:d.org,
+   lat:p[0],lon:p[1]
+  });
+ }
+
+ return r;
+}
+
+async function request(i,ip){
+ const encoded=encodeURIComponent(ip);
+ const urls=[
+  "https://ipapi.co/"+(ip?encoded+"/":"")+"json/",
+  "https://ipwho.is/"+(ip?encoded:""),
+  "https://www.ipaddressdetails.com/api/v1/ip/"+(ip?encoded:""),
+  "https://free.freeipapi.com/api/v1/json/"+(ip?encoded:""),
+  "https://ipinfo.io/"+(ip?encoded+"/":"")+"json"
+ ];
+
+ const controller=new AbortController();
+ const timer=setTimeout(()=>controller.abort(),12000);
+
+ try{
+  const response=await fetch(urls[i],{signal:controller.signal});
+  if(!response.ok)throw Error("HTTP "+response.status);
+  const data=await response.json();
+
+  if(data.error||data.success===false)
+   throw Error(data.message||"API error");
+
+  return normalize(i,data);
+ }finally{
+  clearTimeout(timer);
+ }
+}
+
+function esc(v){
+ return String(v??"Tidak tersedia").replace(/[&<>"']/g,c=>({
+  "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+ }[c]));
+}
+
+function field(label,value){
+ return '<div class="item"><label>'+label+'</label><b>'+esc(value)+'</b></div>';
+}
+
+function render(){
+ const valid=results.filter(Boolean);
+
+ if(!valid.length){
+  $("results").innerHTML='<section class="panel empty">Belum ada hasil yang berhasil.</section>';
+  return;
+ }
+
+ $("results").innerHTML=valid.map(r=>
+ '<section class="card">'+
+ '<h3>'+esc(r.server)+'</h3>'+
+ '<div class="note">IP Address: '+esc(r.ip)+'</div>'+
+ '<div class="grid">'+
+ field("Country",r.country)+
+ field("Region / Province",r.region)+
+ field("City",r.city)+
+ field("ZIP / Postal Code",r.zip)+
+ field("ISP / Provider",r.isp)+
+ field("ASN Number",r.asn)+
+ field("ASN Organization",r.asnorg)+
+ field("Latitude",r.lat)+
+ field("Longitude",r.lon)+
+ '</div>'+
+ '<button class="copy" type="button" data-copy="'+esc(r.ip||"")+'">COPY IP</button>'+
+ '</section>'
+ ).join("");
+
+ document.querySelectorAll("[data-copy]").forEach(b=>{
+  b.addEventListener("click",()=>{
+   const value=b.getAttribute("data-copy");
+   if(navigator.clipboard){
+    navigator.clipboard.writeText(value)
+    .then(()=>alert("IP berhasil disalin"))
+    .catch(()=>alert("Gagal menyalin"));
+   }else{
+    alert("IP: "+value);
+   }
+  });
+ });
+}
+
+function showMatch(){
+ const valid=results.filter(Boolean);
+ if(valid.length<2){
+  $("compare").innerHTML="";
+  return;
+ }
+
+ const fields=["country","region","city"];
+ let total=0,matched=0;
+
+ fields.forEach(f=>{
+  const values=valid.map(r=>
+   String(r[f]||"").trim().toLowerCase()
+  ).filter(Boolean);
+
+  if(values.length>=2){
+   total++;
+   const counts={};
+   values.forEach(v=>counts[v]=(counts[v]||0)+1);
+   if(Math.max(...Object.values(counts))>1)matched++;
+  }
+ });
+
+ const pct=total?Math.round(matched/total*100):0;
+
+ $("compare").innerHTML=
+ '<div class="match">'+
+ '<div class="label">KECOCOKAN DATA ANTAR SERVER</div>'+
+ '<div class="percent">'+pct+'%</div>'+
+ '<div class="note">Perbandingan kesamaan data wilayah dari server yang berhasil.</div>'+
+ '</div>';
+}
+
+async function scanAll(){
+ if(busy)return;
+
+ const ip=$("ip").value.trim();
+
+ if(ip&&!/^[0-9a-fA-F:.]+$/.test(ip)){
+  alert("Format IP tidak valid.");
+  return;
+ }
+
+ busy=true;
+ results=Array(5).fill(null);
+ $("compare").innerHTML="";
+ $("results").innerHTML="";
+ $("bar").style.width="0%";
+ $("scanBtn").disabled=true;
+ $("myBtn").disabled=true;
+ $("log").textContent="Memulai pemeriksaan...";
+
+ let done=0;
+
+ const tasks=names.map(async(n,i)=>{
+  setStatus(i,"CHECKING","");
+  try{
+   results[i]=await request(i,ip);
+   setStatus(i,"SUCCESS","ok");
+  }catch(error){
+   console.warn(names[i],error);
+   setStatus(i,"FAILED","bad");
+  }
+
+  done++;
+  $("bar").style.width=(done/5*100)+"%";
+  $("log").textContent="Memeriksa server "+done+"/5";
+  render();
+ });
+
+ await Promise.all(tasks);
+
+ render();
+ showMatch();
+
+ $("log").textContent=
+ "Selesai. Berhasil "+results.filter(Boolean).length+" dari 5 server.";
+
+ $("scanBtn").disabled=false;
+ $("myBtn").disabled=false;
+ busy=false;
+}
+
+function reset(){
+ if(busy)return;
+
+ results=Array(5).fill(null);
+ $("ip").value="";
+ $("compare").innerHTML="";
+ $("results").innerHTML=
+ '<section class="panel empty">Hasil pemeriksaan akan muncul di sini.</section>';
+ $("bar").style.width="0%";
+ $("log").textContent="Siap melakukan pemeriksaan.";
+
+ names.forEach((n,i)=>setStatus(i,"WAITING",""));
+}
+
+init();
+})();
+</script>
+</body>
+</html>
